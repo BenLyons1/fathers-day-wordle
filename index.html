@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Ensure proper mobile rendering and safe-area support -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="John's Wordle">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>John's Father's Day Wordle Challenge</title>
+  <!-- Confetti library -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.4.0/dist/confetti.browser.min.js"></script>
+  <style>
+    :root {
+      --primary-color: #4CAF50;
+      --secondary-color: #2196F3;
+      --accent-color: #FFC107;
+      --chip-bg: rgba(76, 175, 80, 0.1);
+      --chip-color: #4CAF50;
+    }
+    /* Fade-in on load */
+    body { opacity: 0; animation: fadeIn 0.5s ease-out forwards; }
+    @keyframes fadeIn { to { opacity: 1; }}
+    /* Background and layout */
+    html, body { margin:0; padding:0; width:100%; height:100%;
+      background: linear-gradient(135deg, #fafafa 0%, #eaeaea 100%);
+      background-attachment: fixed; background-position: center 0; background-size: cover;
+    }
+    body { display:flex; flex-direction:column; align-items:center;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0;
+      position:relative; overflow-x:hidden;
+    }
+    .header-image { max-width:90%; margin:20px 0 10px; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.1); }
+    /* Header with decorative underline */
+    .game-header { text-align:center; margin-bottom:10px; position:relative; }
+    .game-header h1 { font-size:1.6em; margin:0; padding-bottom:0.5em; color:#333; display:inline-block; }
+    .game-header h1::after { content:''; position:absolute; left:50%; transform:translateX(-50%);
+      bottom:0; width:120%; height:0.5em;
+      background:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="10"><path d="M0,5 Q100,0 200,5" fill="none" stroke="%23FFC107" stroke-width="10" opacity="0.3"/></svg>') no-repeat center;
+      background-size:contain;
+    }
+    .game-header .subtitle { font-size:1em; color:#555; margin-top:0.5em; }
+    /* Circular progress */
+    #progress-container { position: relative; width: 80px; height: 80px; margin: 20px 0; }
+    #progress-svg { transform: rotate(-90deg); }
+    #progress-bg, #progress-fg { fill: none; stroke-width: 8; }
+    #progress-bg { stroke: #ddd; }
+    #progress-fg { stroke: var(--accent-color); stroke-linecap: round; transition: stroke-dashoffset 0.4s ease; }
+    #progress-text { position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:1em; color:#555; }
+    /* Hint container */
+    #hint-container { display:flex; justify-content:center; margin:10px 0; flex-wrap:wrap; gap:8px; }
+    .hint-box { display:inline-flex; justify-content:center; align-items:center;
+      width:clamp(40px,12vw,60px); height:clamp(40px,12vw,60px);
+      margin:4px; border:2px dashed var(--accent-color); border-radius:4px;
+      color:var(--accent-color); font-weight:bold; font-size:clamp(1em,4vw,1.25em);
+      background:rgba(255,255,255,0.8); animation:popSettle 0.6s ease forwards;
+    }
+    /* Guess container */
+    #guess-container { margin:20px 0; flex:1; display:flex; flex-direction:column; align-items:center; }
+    .guess-line { display:flex; margin:5px 0; opacity:0; transform:translateY(20px); animation:slideUp 0.4s ease forwards; }
+    @keyframes slideUp { to { opacity:1; transform:translateY(0); }}
+    .letter-box { display:inline-flex; justify-content:center; align-items:center;
+      width:clamp(40px,12vw,60px); height:clamp(40px,12vw,60px);
+      margin:0 4px; border:2px solid #ccc; border-radius:4px;
+      background:#fff; font-weight:bold; font-size:clamp(1em,4vw,1.25em);
+      text-transform:uppercase; color:#333;
+      box-shadow:0 1px 3px rgba(0,0,0,0.05);
+      transform-style:preserve-3d; backface-visibility:hidden;
+    }
+    @keyframes flip { 0%{transform:rotateX(0deg);}50%{transform:rotateX(90deg);}100%{transform:rotateX(0deg);} }
+    .correct-place { background-color:var(--primary-color); border-color:var(--primary-color); color:white; }
+    .correct-letter { background-color:var(--secondary-color); border-color:var(--secondary-color); color:white; }
+    /* Chips for correct words */
+    #correct-list { display:flex; flex-wrap:wrap; gap:8px; max-width:90%; margin:10px 0 20px; }
+    .chip { background:var(--chip-bg); color:var(--chip-color);
+      padding:4px 10px; border-radius:16px; font-size:0.9em;
+      opacity:0; transform:translateY(10px);
+      animation:chipIn 0.3s forwards;
+    }
+    @keyframes chipIn { to { opacity:1; transform:translateY(0); }}
+    /* Input area */
+    #input-area { position:fixed; bottom:env(safe-area-inset-bottom); left:0; width:100%; display:flex; justify-content:center;
+      background:#fff; padding:10px 0; box-shadow:0 -2px 5px rgba(0,0,0,0.1);
+    }
+    #input-area button { margin:0 5px; }
+    #hint-btn, #submit-btn { font-size:1em; padding:0.5em 1em; border:1px solid #ccc; border-radius:4px; background:#fff; }
+    #hint-btn[disabled] { opacity:0.5; }
+    #input-area input { font-size:1em; padding:0.5em 1em; margin:0 5px; border:1px solid #ccc; border-radius:4px;
+      flex:1; max-width:60%; }
+    /* Popup congrats */
+    #congrats-popup { display:none; position:absolute; top:40%; left:50%; transform:translate(-50%,-50%) scale(0);
+      background:var(--accent-color); color:#fff; padding:1em 1.5em; border-radius:8px; font-size:1.2em;
+      white-space:nowrap; z-index:1000;
+    }
+    @keyframes popSettle { 0%{transform:translate(-50%,-50%) scale(0);opacity:0;} 60%{transform:translate(-50%,-50%) scale(1.2);opacity:1;} 80%{transform:translate(-50%,-50%) scale(1.1);}100%{transform:translate(-50%,-50%) scale(1);} }
+    /* Error shake */
+    @keyframes shake {0%,100%{transform:translateX(0);}20%,60%{transform:translateX(-10px);}40%,80%{transform:translateX(10px);} }
+    #message { margin-top:10px; color:#e91e63; }
+    #message.shake { animation:shake 0.4s; }
+    /* Final message */
+    #final-message { display:none; font-size:2em; margin:20px; color:var(--accent-color); text-align:center; animation:popSettle 0.8s ease-out forwards; }
+    @media(min-width:600px){#input-area{position:static;box-shadow:none;padding:20px 0;}#input-area input{max-width:200px;}body{padding:20px 0;}#guess-container{margin:40px 0;}#correct-list{justify-content:center;}}  
+  </style>
+</head>
+<body>
+  <img class="header-image" src="https://redlionchambers.co.uk/wp-content/uploads/2022/06/John-Lyons.jpg" alt="John Lyons">
+  <div class="game-header">
+    <h1>John's Father's Day Wordle Challenge</h1>
+    <div class="subtitle">Guess the word in 5 tries!</div>
+  </div>
+  <!-- Circular progress indicator -->
+  <div id="progress-container">
+    <svg id="progress-svg" width="80" height="80">
+      <circle id="progress-bg" cx="40" cy="40" r="36"></circle>
+      <circle id="progress-fg" cx="40" cy="40" r="36" stroke-dasharray="226" stroke-dashoffset="226"></circle>
+    </svg>
+    <div id="progress-text"></div>
+  </div>
+  <div id="hint-container"></div>
+  <div id="guess-container"></div>
+  <div id="message"></div>
+  <div id="input-area">
+    <button id="hint-btn">Hint (3)</button>
+    <input type="text" id="guess-input" autocomplete="off" placeholder="Your guess" />
+    <button id="submit-btn">Submit</button>
+  </div>
+  <div id="correct-list"></div>
+  <div id="final-message">Happy Father's Day, John!</div>
+  <div id="congrats-popup"></div>
+  <canvas id="confetti-canvas"></canvas>
+  <!-- Audio elements -->
+  <audio id="correct-sound" preload="auto">
+    <source src="https://upload.wikimedia.org/wikipedia/en/a/a5/Another_One_Bites_the_Dust.ogg" type="audio/ogg">
+    <source src="https://archive.org/download/another_one_bites_the_dust_mp3/AnotherOneBitesTheDust.mp3" type="audio/mpeg">
+  </audio>
+  <audio id="victory-sound" preload="auto">
+    <source src="https://upload.wikimedia.org/wikipedia/en/3/3c/Queen_We_Are_the_Champions.ogg" type="audio/ogg">
+    <source src="https://archive.org/download/we_are_the_champions_mp3/WeAreTheChampions.mp3" type="audio/mpeg">
+  </audio>
+  <script>
+    // Game logic
+    const words = ['GORST','BENCH','GAVEL','TRIAL','LEEDS','COURT','PLEAD','LYONS','GUESS'];
+    let currentIndex = 0, guesses = 0, maxTries = 5;
+    const progressText = document.getElementById('progress-text');
+    const progressFg = document.getElementById('progress-fg');
+    const guessContainer = document.getElementById('guess-container');
+    const messageEl = document.getElementById('message');
+    const input = document.getElementById('guess-input');
+    const submitBtn = document.getElementById('submit-btn');
+    const hintBtn = document.getElementById('hint-btn');
+    const hintContainer = document.getElementById('hint-container');
+    const correctList = document.getElementById('correct-list');
+    const finalMessageEl = document.getElementById('final-message');
+    const popup = document.getElementById('congrats-popup');
+    const correctSound = document.getElementById('correct-sound');
+    const victorySound = document.getElementById('victory-sound');
+
+    // Hint state
+    let hintsLeft = 3;
+    let revealedIndices = [];
+    const congratsMsgs = ["Great job, John!","Nice one!","Way to go!","Correct!","Nicely done.","Well guessed, John!"];
+    let correctWords = [];
+
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+    }
+
+    function updateProgress() {
+      progressText.textContent = `Word ${currentIndex+1} of ${words.length}`;
+      const pct = currentIndex / words.length;
+      const dash = 226 * (1 - pct);
+      progressFg.style.strokeDashoffset = dash;
+    }
+
+    function updateCorrectChips() {
+      correctList.innerHTML = '';
+      correctWords.forEach((w, i) => {
+        const chip = document.createElement('div');
+        chip.className = 'chip';
+        chip.textContent = w;
+        chip.style.animationDelay = `${i * 0.1}s`;
+        correctList.appendChild(chip);
+      });
+    }
+
+    function showPopup(msg) {
+      popup.textContent = msg;
+      popup.style.display = 'block';
+      popup.style.animation = 'popSettle 0.8s ease-out forwards';
+      setTimeout(() => { popup.style.display = 'none'; }, 1200);
+    }
+
+    function revealHint() {
+      if (hintsLeft < 1) return;
+      const target = words[currentIndex];
+      const available = [...Array(target.length).keys()].filter(i => !revealedIndices.includes(i));
+      if (available.length === 0) return;
+      const idx = available[Math.floor(Math.random() * available.length)];
+      revealedIndices.push(idx);
+      hintsLeft--;
+      hintBtn.textContent = `Hint (${hintsLeft})`;
+      if (hintsLeft === 0) hintBtn.disabled = true;
+      const box = document.createElement('div');
+      box.className = 'hint-box';
+      box.textContent = target[idx];
+      hintContainer.appendChild(box);
+    }
+
+    function setupWord() {
+      updateProgress();
+      guesses = 0;
+      revealedIndices = [];
+      hintContainer.innerHTML = '';
+      hintsLeft = 3;
+      hintBtn.textContent = `Hint (${hintsLeft})`;
+      hintBtn.disabled = false;
+      guessContainer.innerHTML = '';
+      messageEl.textContent = '';
+      input.value = '';
+      input.maxLength = words[currentIndex].length;
+      input.focus();
+    }
+
+    function handleGuess() {
+      const guess = input.value.trim().toUpperCase();
+      const target = words[currentIndex];
+      if (guess.length !== target.length) {
+        messageEl.textContent = `Please enter exactly ${target.length} letters.`;
+        messageEl.classList.add('shake');
+        messageEl.addEventListener('animationend', () => messageEl.classList.remove('shake'), { once: true });
+        return;
+      }
+      guesses++;
+      const line = document.createElement('div');
+      line.className = 'guess-line';
+      for (let i = 0; i < guess.length; i++) {
+        const box = document.createElement('div');
+        box.className = 'letter-box';
+        box.textContent = guess[i];
+        box.style.animation = `flip 0.5s ease ${i*0.2}s forwards`;
+        if (guess[i] === target[i]) box.classList.add('correct-place');
+        else if (target.includes(guess[i])) box.classList.add('correct-letter');
+        line.appendChild(box);
+      }
+      guessContainer.appendChild(line);
+      input.value = '';
+
+      if (guess === target) {
+        correctSound.currentTime = 0;
+        correctSound.play();
+        correctWords.push(target);
+        updateCorrectChips();
+        showPopup(congratsMsgs[Math.floor(Math.random() * congratsMsgs.length)]);
+        launchConfetti();
+        setTimeout(nextWord, 1000);
+      } else if (guesses >= maxTries) {
+        messageEl.textContent = `Out of tries! The word was "${target}".`;
+        setTimeout(nextWord, 1500);
+      }
+    }
+
+    function nextWord() {
+      currentIndex++;
+      if (currentIndex < words.length) {
+        setupWord();
+      } else {
+        victorySound.currentTime = 0;
+        victorySound.play();
+        input.disabled = true;
+        submitBtn.disabled = true;
+        hintBtn.disabled = true;
+        finalMessageEl.style.display = 'block';
+        launchConfetti();
+        setTimeout(() => launchConfetti(), 300);
+      }
+    }
+
+    // Initialize
+    shuffle(words);
+    setupWord();
+    submitBtn.addEventListener('click', handleGuess);
+    input.addEventListener('keypress', e => { if (e.key === 'Enter') handleGuess(); });
+    hintBtn.addEventListener('click', revealHint);
+
+    // Parallax
+    window.addEventListener('scroll', () => {
+      const y = window.scrollY * 0.3;
+      document.body.style.backgroundPosition = `center ${-y}px`;
+    });
+    window.addEventListener('deviceorientation', e => {
+      const tilt = e.gamma;
+      const xOffset = tilt ? tilt * 0.5 : 0;
+      document.body.style.backgroundPosition = `${xOffset}px center`;
+    });
+  </script>
+</body>
+</html>
